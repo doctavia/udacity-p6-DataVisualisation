@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="https://d3js.org/d3.v3.min.js"></script>
+  <script src="https://d3plus.org/js/d3plus.js"></script>
+  <script src="https://code.jquery.com/jquery.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.0.0-alpha.6/js/bootstrap.min.js"></script>
+ 
+  <link rel="stylesheet"   href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css" media ="screen">
+  <title> US Carriers and Airports Performance </title>
+    <style type ="text/css">
+
+    h1 {
+      text-align: center;
+      font: 25px sans-serif;
+      font-weight: bold;
+    }
+
+    h2 {
+      text-align : center;
+    }
+
+    p {
+      font-size: 
+    }
+
+    circle {     
+      stroke: black;
+      stroke-width: 0.7;
+      opacity: 0.9;
+    }
+
+    path { 
+        stroke: steelblue;
+        fill: none;
+    }
+
+    text{
+      font: 10px sans-serif;
+    }
+
+
+    .tooltip { 
+      position: absolute;     
+      text-align: center;     
+      width: 150px;          
+      height: 50px;         
+      padding: 2px;       
+      font: 10px sans-serif;   
+      font-weight: bold; 
+      background: lightsteelblue; 
+      border: 0px;    
+      border-radius: 8px;     
+      pointer-events: none;     
+    }
+
+    .axis path, .axis line {
+      fill: none;
+      stroke: black;
+      shape-rendering: crispEdges;
+      stroke-width: 2px;
+    }
+
+    .label {
+      fill: #777;
+    }
+
+    .year.label {
+      font: 500 100px "Helvetica Neue";
+      fill: #ddd;
+    }
+
+    .year.label.active {
+      fill: #aaa;
+    }
+
+    .overlay {
+      fill: none;
+      pointer-events: all;
+      cursor: ew-resize;
+    }
+
+    div.years_buttons {
+      position: absolute;
+      top: 350px;
+      right: 200px;
+    }  
+
+    div.years_buttons div {
+      display: inline;
+      background-color: rgb(251, 201, 127);
+      padding: 3px;
+      margin: 7px;
+    }
+
+    div.select_year {
+      position: absolute;
+      top: 330px;
+      right:650px;
+    }
+
+    div.months_buttons {
+      position: absolute;
+      top : 750px;
+      left : 700px;
+    }  
+
+    div.months_buttons div {
+      background-color: grey;
+      display: inline;
+      padding: 3px;
+      margin: 7px;
+    }
+
+    div.select_month {
+      position: absolute;
+      top: 730px;
+      left:700px;
+    }
+
+    svg.heat_legend {
+      position: absolute;
+      top : 500px;
+      right : 100px;
+    }
+    /*svg {
+      border: 1px solid black;
+    }*/
+
+    </style>
+
+    <script type="text/javascript">  
+
+      function drawBubbles(data) {
+        function x(d) { return d.delay_arr_pct; }
+        function y(d) { return d.ontime_arr_pct; }
+        function radius(d) { return d.total_flights; }
+        function color(d) { return d.CARRIER; }
+        function key(d) { return d.CARRIER; }
+
+        // Set dimension of canvas
+        var margin = {top: 40, right: 100, bottom: 40, left: 40},
+            width = 700  - margin.right - margin.left,
+            height = 350 - margin.top - margin.bottom;
+
+        //d3.select("body")
+         // .append('h2')
+         // .text("US Carriers Performance in 2007");
+
+        // Scales
+        var xScale = d3.scale.linear().domain([0,35]).range([0,width]),
+            yScale = d3.scale.linear().domain([50,100]).range([height,0]),
+            radiusScale = d3.scale.sqrt().domain([0, 500000]).range([0,15]), //1300000
+            colorScale = d3.scale.category20();
+
+        // x and y-axes
+        var xAxis = d3.svg.axis().orient("bottom").scale(xScale),
+            yAxis = d3.svg.axis().scale(yScale).orient("left");
+
+        // Create svg on webpage
+        var svg1 = d3.select("#Chart1").append("svg").classed("col-md-6",true)
+                .style("width", width + margin.left + margin.right)
+                .style("height", height + margin.top + margin.bottom)
+              .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+
+        // Add x-axis
+        svg1.append("g")
+            .attr("class", "x axis")
+            .attr("transform", "translate(0," + height + ")")
+            .call(xAxis);
+
+        // Add y-axis
+        svg1.append("g")
+            .attr("class", "y axis")
+            .call(yAxis);
+
+        // Add an x-axis label
+        svg1.append("text")
+            .attr("class", "x label")
+            .attr("text-anchor", "middle")
+            .attr("x", width/2)
+            .attr("y", height+margin.bottom/1.5)
+            .text("Delayed Arrival (%)")
+
+        // Add y-axis label
+        svg1.append("text")
+            .attr("class", "y label")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 0- margin.left)
+            .attr("x", 0-(height/2))
+            .attr("dy", "1em")
+            .attr("text-anchor", "middle")
+            .text("Ontime Arrival (%)")
+
+         // Add year label
+        var label = svg1.append("text")
+            .attr("class", "year label")
+            .attr("text-anchor", "end")
+            .attr("x", width)
+            .attr("y", height -24)
+           // .text(Math.round(year));
+
+        // Add title to chart
+        svg1.append('text')
+            .attr("class", "title")
+            .attr("x", width/2)
+            .attr("y", 0-(margin.top/2))
+            .attr("text-anchor", "middle")
+            .style("font-size", "16px")
+            .style("font-weight", "bold")
+            .text("US Carriers Performance")
+
+        // Add tooltip area to webpage
+        var tooltip1 = d3.select("#Chart1")
+                        .append("div")
+                        .attr("class", "tooltip")
+                        .style("opacity", 0);
+
+        
+      //function plot_points(data) {
+          // Group data by YEAR
+          var NestedData =  d3.nest()
+                              .key(function(d) {
+                                //debugger;
+                                return d['YEAR'];
+                                //debugger; 
+                              }) // end of .key  
+                              .entries(data);
+                              
+
+          debugger;
+
+          // Smaller circle drawn on top
+          function order(a,b) {
+            return radius(b) - radius(a);
+          }
+
+          // Format value to 2 decimal place
+          var formatDec = d3.format(".2f")
+
+          svg1.append('g')
+                 .attr("class", "bubble")
+                 .selectAll("circle")
+                 .data(NestedData[0].values)
+                 //.data([])
+                 .enter()
+                 .append("circle")
+                 .attr("cx", function(d) { return xScale(d.delay_arr_pct); })
+                 .attr("cy", function(d) { return yScale(d.ontime_arr_pct); })
+                 .attr("r", function(d) { return radiusScale(d.total_flights); })
+                 .attr("fill", function(d) { return colorScale(d.CARRIER)} )
+                 .attr('opacity', 0.7)
+                 .attr('stroke', 'black')
+                 .attr('stroke-width', 0.7)
+                 .sort(order)
+
+
+          function update1(year) {
+                var filtered = NestedData.filter(function(d) {
+                    
+                    return new Date(d['key']).getFullYear() === year;
+                 });
+                
+
+                //debugger;
+                 // ===========>
+                // view the data:
+                //console.log(filtered);
+
+                d3.select('h2')
+                  .text("US Carriers Performance in " + Math.round(year));
+
+       
+                label.text(Math.round(year));
+
+               
+                
+                debugger;
+                svg1.selectAll('circle').remove(); 
+                svg1.select('#circletext').remove();
+                        
+                
+                circles = svg1.selectAll('circle1')
+                                   .data(filtered[0].values)
+
+                              
+                debugger;
+                
+
+                circles.enter()
+                  .append('circle')
+              
+
+                circles
+                  //.delay(2000)
+                  //.transition()
+                  //.duration(1000)
+                  .attr("cx",  function(d) { 
+                          // ===========>
+                           //view the data passed by '.enter()':
+                          //console.log(d);
+                          return xScale(d.delay_arr_pct)} )
+                  .attr("cy", function(d) { return yScale(d.ontime_arr_pct)} )
+                  .attr("r", function(d) { return radiusScale(d.total_flights)} )
+                  .attr('fill', function(d) { return colorScale(d.CARRIER)} )
+                  .sort(order)
+                  .on("mouseover", function(d) {
+                    tooltip1.transition()
+                          .duration(500)
+                          .style("opacity", .9);
+                    tooltip1.html(d["carrier_names"]  + "</br> (" + formatDec(d["delay_arr_pct"]) + "%" + ", " + formatDec(d["ontime_arr_pct"]) + "%" + ")"+ "</br>" + "Annual Flights: " + d["total_flights"] 
+                      )
+                          .style("left", (d3.event.pageX) + "px")
+                          .style("top", (d3.event.pageY -60 ) + "px")
+                  })
+                  .on("mouseout", function(d) {
+                    tooltip1.transition()
+                          .duration(500)
+                          .style("opacity", 0)
+                  });
+
+                var addText = svg1.append('g')
+                        .attr("id","circletext")
+                        .selectAll('circletext')
+                        .data(filtered[0].values)
+                        .enter()
+                        .append("text")
+
+                circleText = addText
+                      .attr("x", function(d) { return xScale(d.delay_arr_pct) })
+                      .attr("y", function(d) { return yScale(d.ontime_arr_pct) })
+                      .text(function(d) {return d.CARRIER})
+                      .style("text-anchor", "middle")
+                      .attr("font-family", "Arial Black")
+                      .attr("fill", "grey")
+                      .attr("font-size", "8px")
+                
+               
+               
+                 
+                //circles.exit().remove();
+              debugger;  
+
+          }; // end of function update(year)
+
+          //update(2009)
+          var years = [];
+
+         for (var year = 2007; year <= 2016; year += 1) {
+              years.push(year);
+          }
+        
+          var year_idx = 0;
+
+          var year_interval = setInterval(function() {
+            update1(years[year_idx]);
+
+            year_idx++;
+
+            if (year_idx >= years.length) {
+              clearInterval(year_interval);     
+
+              var select_year = d3.select("body")
+                        .append("div")
+                        .attr("class","select_year")
+                        .selectAll("div")
+                        .data(["Select Year: "])
+                        .enter()
+                        .append("text")
+                        //.attr("width", 500)
+                        //.attr("height", 250)
+                        .style("font-family", "sans-serif")
+                        .style("font-size", "12px")
+                        .style("font-weight", "bold")
+                        .style("color", "Black")
+                        .style("float", "center")
+                        .text(function (d) { return d; });
+
+              var buttons = d3.select("body")
+                       .append('div')
+                       .attr("class", "years_buttons")
+                       .selectAll("div")
+                       .data(years)
+                       .enter()
+                       .append("div")
+                       .attr("value", function(d) { return d; })
+                       .attr("id", function(d) { return d; })
+                       .text(function(d) {
+                          return d;});
+
+
+              debugger;
+
+              //var selectButton = d3.select(".years_buttons").node().children;
+              for (var year=2007; year<=2016; year++) {
+                      (function(year) {
+                        document.getElementById(String(year)).addEventListener("click", function() {
+                            d3.select(".years_buttons")
+                              .selectAll("div")
+                              .transition()
+                              .duration(500)
+                              .style('color', 'black')
+                              .style('background', 'rgb(251, 201, 127)')
+
+                            d3.select(this)
+                              .transition()
+                              .duration(500)
+                              .style("background", "lightBlue")
+                              .style("color", "white");
+                            update1(year); 
+                        });
+                      })(year);
+              }
+              
+              /*document.getElementById("2007").addEventListener("click", function() {
+                update1(2007);
+              });
+
+              document.getElementById("2008").addEventListener("click", function() {
+                update1(2008);
+              });
+
+              document.getElementById("2009").addEventListener("click", function() {
+                update1(2009);
+              });*/
+
+            }
+          }, 1000); // end of year_interval
+          debugger;
+          
+      }; //end of drawBubbles function
+
+      //=============================================================== END OF SVG1 CODES ==============================================================
+
+      // svg2 DEPARTURE
+      var margin2 = {top: 40, right: 20, bottom: 20, left: 40},
+            width2 = 500 - margin2.left - margin2.right,
+            height2 = 350 - margin2.top - margin2.bottom;
+
+     
+
+
+      function draw2(geo_data) {
+        "use strict";
+         var projection = d3.geo.mercator()
+                               .scale(410)
+                               .translate( [width2/0.48, height2/0.62]);
+
+        var path = d3.geo.path().projection(projection);
+
+        var svg2 = d3.select("#Chart2").classed("col-md-6", true)
+            .append("svg")
+            .style("width", width2 + margin2.left + margin2.right)
+            .style("height", height2 + margin2.top + margin2.bottom)
+            .append('g')
+            .attr('class', 'map')
+        
+        var title2 = svg2.append("text")
+           .attr("class", "title")
+            .attr("x", "50%")
+            .attr("y", "5%")
+            .attr("text-anchor", "middle")
+            .style("font-size", "16px")
+            .style("font-weight", "bold")
+            .text("Percentage of Delayed Departures by Airport");
+  
+
+        var map2 = svg2.selectAll('path')
+                     .data(geo_data.features)
+                     .enter()
+                     .append('path')
+                     .attr('d', path)
+                     .style('fill', 'lightBlue')
+                     .style('stroke', 'black')
+                     .style('stroke-width', 0.5);
+
+         
+        // Add tooltip area to webpage
+        var tooltip2 = d3.select("body")
+                        .append("div")
+                        .attr("class", "tooltip")
+                        .style("opacity", 0);
+
+        function plot_points(data) {
+              var nested_year = d3.nest()
+                        .key(function(d) {return d['Date'].getFullYear(); })
+                        .rollup(function(leaves) {
+                              var total_dep_delay_org = d3.sum(leaves, function(d) {
+                                  return d.dep_delay_org
+                              });
+
+                              return {
+                                'total_dep_delay_org_year' : total_dep_delay_org
+                              };
+                        })
+                        .entries(data);
+
+
+              var nested_month = d3.nest()
+                        .key(function(d) {return d['Date'].getFullYear(); })
+                        .key(function(d) { return d['Date'].getMonth(); })
+                        .key(function(d) { return d['airport'];})
+                        .rollup(function(leaves) {
+                              var year = leaves.map(function(d) {
+                                return d.Date.getFullYear()
+                              });
+
+                              var month = leaves.map(function(d) {
+                                return d.Date.getMonth()
+                              });
+
+                              var airport = leaves.map(function(d) {
+                                return d.airport
+                              });
+
+                              var coords = leaves.map(function(d) {
+                                return projection([+d.long, +d.lat]);
+                              });
+
+                              var center_x = d3.mean(coords, function(d) {
+                                return d[0];
+                              });
+                              
+                              var center_y = d3.mean(coords, function(d) {
+                                return d[1];
+                              });
+
+                              var city = leaves.map(function(d) {
+                                return d.city
+                              });
+
+                              var state = leaves.map(function(d) {
+                                return d.state
+                              });
+
+                              var dep_delay_org_pct = leaves.map(function(d) {
+                                return d.dep_delay_org_pct
+                              });
+
+                              var dep_delay_org_pct_month = leaves.map(function(d) {
+                                return d.dep_delay_org_pct_month
+                              });
+
+                              var dep_delay_org_pct_year = leaves.map(function(d) {
+                                return d.dep_delay_org_pct_year
+                              });
+
+                              var total_dep_delay_org = d3.sum(leaves, function(d) {
+                                return d.dep_delay_org
+                              }); 
+                             
+
+                              return {
+                                'year' : year[0],
+                                'month' : month[0],
+                                'airport' : airport[0],
+                                'x' : center_x,
+                                'y' : center_y,
+                                'city': city[0],
+                                'state' : state[0],
+                                'dep_delay_org_pct_m' : dep_delay_org_pct[0],
+                                'dep_delay_org_pct_month' : dep_delay_org_pct_month[0],
+                                'dep_delay_org_pct_year' : dep_delay_org_pct_year[0],
+                                'total_dep_delay_org_yma' : total_dep_delay_org // ya = year, airport // yma = year, month, airport
+                              };
+                         })
+                         .entries(data);
+
+              var nested_dep = d3.nest()
+                           .key(function(d) {
+                                //debugger;
+                                return d['Date'].getFullYear();
+                                //debugger;
+                           })
+                          // .key(function(d) { return d['Date'].getMonth(); })
+                           .key(function(d) { return d['airport'];})
+                           .rollup(function(leaves) {
+                                var year = leaves.map(function(d) {
+                                  return d.Date.getFullYear()
+                                });
+
+                                var airport = leaves.map(function(d) {
+                                  return d.airport
+                                });
+
+                                var coords = leaves.map(function(d) {
+                                  return projection([+d.long, +d.lat]);
+                                });
+
+                                var center_x = d3.mean(coords, function(d) {
+                                  return d[0];
+                                });
+                                
+                                var center_y = d3.mean(coords, function(d) {
+                                  return d[1];
+                                });
+
+                                var city = leaves.map(function(d) {
+                                  return d.city
+                                });
+
+                                var state = leaves.map(function(d) {
+                                  return d.state
+                                });
+
+                                var dep_delay_org_pct = leaves.map(function(d) {
+                                  return d.dep_delay_org_pct
+                                });
+
+                                var dep_delay_org_pct_month = leaves.map(function(d) {
+                                  return d.dep_delay_org_pct_month
+                                });   
+
+                                var dep_delay_org_pct_year = d3.sum(leaves, function(d) {
+                                  return d.dep_delay_org_pct_year
+                                });  
+
+                                var total_dep_delay_org = d3.sum(leaves, function(d) {
+                                  return d.dep_delay_org
+                                }); 
+                               
+
+                                return {
+                                  'year' : year[0],
+                                  'airport' : airport[0],
+                                  'x' : center_x,
+                                  'y' : center_y,
+                                  'city': city[0],
+                                  'state' : state[0],
+                                  'dep_delay_org_pct' : dep_delay_org_pct[0],
+                                  'dep_delay_org_pct_month' : dep_delay_org_pct_month[0],
+                                  'dep_delay_org_pct_year' : dep_delay_org_pct_year,
+                                  'total_dep_delay_org_ya' : total_dep_delay_org // ya means by year, airport
+                                };
+                           })
+                           .entries(data);
+
+
+              debugger;
+              //================ get yearly max value for radius and heat scale 
+              var dep_delay_max= d3.max(d3.max(nested_dep, function(d) {
+              return d.values.map(function(v) { 
+                return v.values.total_dep_delay_org_ya }) }))
+              
+              debugger;
+              // circle radius from total_dep_delay_org_ya  
+              var radius = d3.scale.sqrt()
+                             .domain([0, dep_delay_max]) //115758
+                             .range([0,10]);
+              
+
+              var dep_delay_org_pct_max = d3.max(d3.max(nested_dep, function(d) {
+              return d.values.map(function(v) { 
+                return v.values.dep_delay_org_pct_year }) }))
+
+              
+              // use heatmap to visualize the percentage of delay at each airport
+              var heatScale = d3.scale.linear().domain([0,dep_delay_org_pct_max]).range(["white", "red"]);
+              debugger;
+              // Add heatmap legend
+              /* Source: https://stackoverflow.com/questions/41848677/how-to-make-a-color-scale-in-d3-js-to-use-in-fill-attribute */
+              /*var idGradient = "legendGradient",
+                  svgWidth = 150,
+                  svgHeight = 200,
+                  x1 = 50,
+                  barWidth = 30,
+                  y1 = 40,
+                  barHeight = 150,
+                  color_data = d3.range(50);
+
+
+              var heat_legend =d3.select("body")
+                            .append("svg")
+                            .attr("class", "heat_legend")
+                            .attr("width", svgWidth)
+                            .attr("height", svgHeight)
+                      
+
+              heat_legend.selectAll(".rects")
+                            .data(color_data)
+                            .enter()
+                            .append("rect")
+                            .attr("fill", d=>heatScale(d))
+                            .attr("x", x1)
+                            .attr("y", (d,i)=>10 + i*2.8)
+                            .attr("width", barWidth)
+                            .attr("height", barHeight)
+                            .attr("opacity", 0.9)
+                            //.attr("rx" , 25) // for round corner
+                            //.attr("ry", 25); 
+
+              heat_legend.append("text")
+                            .attr("class", "legendText")
+                            .attr("x", 80)
+                            .attr("y",10)
+                            .attr("dy",0)
+                            .text("0%");
+
+              heat_legend.append("text")
+                            .attr("class","legendText")
+                            .attr("text-anchor", "left")
+                            .attr("x",80)
+                            .attr("y",200)
+                            .attr("dy",0)
+                            .text("50%");*/
+
+       
+
+
+
+              // Smaller circle drawn on top
+              function order(a,b) {
+                return radius(b) - radius(a);
+              }
+
+              function key_func(d) {
+                return d['key'];
+              };
+
+              // Format value to 2 decimal place
+              var formatDec = d3.format(".2f")
+
+              svg2.append('g')
+                 .attr("class", "bubble")
+                 .selectAll("circle")
+                 .data(nested_dep[0].values)
+                 .enter()
+                 .append("circle")
+                 .attr('cx', function(d) {return d.values['x'];})
+                 .attr('cy', function(d) {return d.values['y'];})
+                 .attr('r', function(d) {return radius(d.values['total_dep_delay_org_ya']);})
+                 .attr('fill', function(d) { return heatScale(d.values['dep_delay_org_pct_year']); })//'rgb(247, 148, 32)')
+                 .attr('opacity', 0.9)
+                 .attr('stroke', 'black')
+                 .attr('stroke-width', 0.7)
+                 .sort(order);
+
+
+
+              function update2(year) {
+                var filtered_dep = nested_dep.filter(function(d) {
+                    
+                    return new Date(d['key']).getFullYear() === year;
+                 });
+                    
+                title2.text("Percentage of Delayed Departures by Airport in " + Math.round(year))
+                                
+                debugger;
+                // svg2 plot
+                svg2.selectAll('circle').remove();
+
+                var circles2 = svg2.selectAll('circle1')
+                                 .data(filtered_dep[0].values);
+
+                circles2.enter()
+                  .append('circle')
+                  //.transition()
+                  //.duration(500)
+                  .attr('cx', function(d) {
+                          // ===========>
+                          //view the data passed by '.enter()':
+                          //console.log(d);
+                          return d.values['x'];})
+                  .attr('cy', function(d) {return d.values['y'];})
+                  .attr('r', function(d) {return radius(d.values['total_dep_delay_org_ya']);})
+                  //.attr("fill", 'rgb(247, 148, 32)')
+                  .attr('fill', function(d) { return heatScale(d.values['dep_delay_org_pct_year']); })
+                  .sort(order)
+                  .on("mouseover", function(d) {
+                      tooltip2.transition()
+                            .duration(500)
+                            .style("opacity", .9);
+                      tooltip2.html( d.values["airport"] + ", " + d.values["state"] + "</br>" + "Delay: " +formatDec(d.values["dep_delay_org_pct_year"]) + "%" + "</br>" + "Delayed Flights :" + d.values["total_dep_delay_org_ya"])
+                            .style("left", (d3.event.pageX) + "px")
+                            .style("top", (d3.event.pageY -90 ) + "px")
+                  })
+                  .on("mouseout", function(d) {
+                      tooltip2.transition()
+                            .duration(500)
+                            .style("opacity", 0)
+                  });
+                debugger;
+
+
+                
+              } // end of update(year)
+
+          function update_month(year, month) {
+                update2(year)
+
+                var filtered_ymonth = nested_month.filter(function(d) {
+                  return new Date(d['key']).getFullYear() === year 
+                });
+
+
+                var filtered_month = (filtered_ymonth[0].values).filter(function(d) {
+                  return d['key'] == month
+                });
+
+                debugger;
+
+                title2.text("Percentage of Delayed Departures by Airport in " + months[month]  + ' '+ Math.round(year) )
+
+                 //================ get monthly max value for radius and heat scale
+                var dep_delay_minmax_month= d3.extent(filtered_month[0].values.map(function(v) { return v.values.total_dep_delay_org_yma}))
+                
+                //debugger;
+                // circle radius from total_dep_delay_org_ya  
+                var radius_month = d3.scale.sqrt()
+                               .domain(dep_delay_minmax_month) //115758
+                               .range([0,10]);
+                
+
+                var dep_delay_org_pct_minmax_month = d3.extent(filtered_month[0].values.map(function(v) { return v.values.dep_delay_org_pct_month}))
+
+                // use heatmap to visualize the percentage of delay at each airport
+                var heatScale_month = d3.scale.linear().domain(dep_delay_org_pct_minmax_month).range(["white", "red"]);
+                
+                debugger;
+
+                svg2.selectAll('circle').remove();
+
+                var circles_month = svg2.selectAll('circle2')
+                                 .data(filtered_month[0].values);
+
+                
+
+                circles_month.enter()
+                  .append('circle')
+                  //.transition()
+                  //.duration(500)
+                  .attr('cx', function(d) {
+                          // ===========>
+                          //view the data passed by '.enter()':
+                          //console.log(d);
+                          return d.values['x'];})
+                  .attr('cy', function(d) {return d.values['y'];})
+                  .attr('r', function(d) {return radius_month(d.values['total_dep_delay_org_yma']);})
+                 .attr('fill', function(d) { return heatScale_month(d.values['dep_delay_org_pct_month']); })//'rgb(247, 148, 32)')
+                  .sort(order)
+                  .on("mouseover", function(d) {
+                      tooltip2.transition()
+                            .duration(500)
+                            .style("opacity", .9);
+                      tooltip2.html(d.values["airport"] + ", " + d.values["state"] + "</br>" + "Delay : "+ formatDec(d.values["dep_delay_org_pct_month"]) + "%" + "</br>" + "Delayed Flights: " + d.values["total_dep_delay_org_yma"])
+                            .style("left", (d3.event.pageX) + "px")
+                            .style("top", (d3.event.pageY -90 ) + "px")
+                  })
+                  .on("mouseout", function(d) {
+                      tooltip2.transition()
+                            .duration(500)
+                            .style("opacity", 0)
+                  });
+
+              }; // end of update_month    
+
+          //update(2010)
+
+          var years = [];
+
+          for (var year = 2007; year <= 2016; year += 1) {
+                years.push(year);
+          }
+
+          var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        
+          var year_idx = 0;
+
+          var year_interval = setInterval(function() {
+            update2(years[year_idx]);
+
+            year_idx++;
+
+            if (year_idx >= years.length) {
+              clearInterval(year_interval);
+
+              var select_year = d3.select("body")
+                              .append("div")
+                              .attr("class","select_month")
+                              .selectAll("div")
+                              .data(["Select Month for monthly airport data: (Select Year to activate month buttons) "])
+                              .enter()
+                              .append("text")
+                              //.attr("width", 500)
+                              //.attr("height", 250)
+                              .style("font-family", "sans-serif")
+                              .style("font-size", "12px")
+                              .style("font-weight", "bold")
+                              .style("color", "Black")
+                              .style("float", "center")
+                              .text(function (d) { return d; });
+
+              var months_buttons = d3.select("body")
+                               .append('div')
+                               .attr("class", "months_buttons")
+                               .selectAll("div")
+                               .data(months)
+                               .enter()
+                               .append("div")
+                               .attr("value", function(d) { return d; })
+                               .attr("id", function(d) { return d; })
+                               .text(function(d) {
+                                  return d;
+                                });
+                               
+
+              for (var year=2007; year<=2016; year++) {
+                      (function(year) {
+                        document.getElementById(String(year)).addEventListener("click", function() {
+                  
+                            d3.select(".years_buttons")
+                              .selectAll("div")
+                              .transition()
+                              .duration(500)
+                              .style('color', 'black')
+                              .style('background', 'rgb(251, 201, 127)')
+
+                            d3.select(".months_buttons")
+                              .selectAll("div")
+                              .transition()
+                              .duration(500)
+                              .style('color', 'black')
+                              .style('background', 'grey')
+
+
+                            d3.select(this)
+                              .transition()
+                              .duration(500)
+                              .style("background", "lightBlue")
+                              .style("color", "white");
+                            update2(year); 
+
+                            for (var i=0; i<=11; i++) {
+                                (function(i) {
+                                  document.getElementById(months[i]).addEventListener("click", function() {
+                                      d3.select(".months_buttons")
+                                        .selectAll("div")
+                                        .transition()
+                                        .duration(500)
+                                        .style('color', 'black')
+                                        .style('background', 'grey')
+
+                                      d3.select(this)
+                                        .transition()
+                                        .duration(500)
+                                        .style("background", "lightBlue")
+                                        .style("color", "white");
+                                      update_month(year, i); 
+                                  });
+                                })(i);
+                              }
+                        });
+
+                      })(year);
+              }
+
+            }
+          }, 1000); // end of year_interval
+
+          } // end of plot_points
+
+          var parseFullDate = d3.time.format("%-d/%m/%Y").parse;
+
+          d3.csv("AirportsData_M.csv", function(d) {
+            return {
+              Date : parseFullDate(d['Date']),
+              DateLabel : d['DateLabel'],
+              dep_delay_org_pct : +d['dep_delay_org_pct_each'],
+              dep_delay_org_pct_month : +d['dep_delay_org_pct_month'],
+              dep_delay_org_pct_year : +d['dep_delay_org_pct_year'],
+              dep_delay_org : +d['dep_delay_org'],
+              airport : d['airport'],
+              city : d['city'],
+              state : d['state'],
+              lat : +d['lat'],
+              long : +d['long']
+            }
+          }, plot_points);
+
+      }; // end of draw(geo_data)
+
+//==================================================================== END OF SVG2 CODES======================================================================
+
+      function drawLines(data1) { 
+
+        // Add title to chart
+       // d3.select("#lineChart")
+       //   .append('h2')
+         // .text("Flight Delay Types ");
+
+        // Set dimensions of the canvas
+        var margin = {top: 40, right: 100, bottom: 20, left: 40},
+            width = 700 - margin.left - margin.right,
+            height = 350 - margin.top - margin.bottom;
+
+        // Adds the svg canvas
+        var svg4 = d3.select("#Chart3")
+            .append("svg")
+            .classed("col-md-6",true)
+            .style("width", width + margin.left + margin.right)
+            .style("height", height + margin.top + margin.bottom)
+            .append("g")
+                .attr("transform", 
+                      "translate(" + margin.left + "," + margin.top + ")");
+
+        // Set the ranges / scale
+       // var x4 = d3.time.scale().domain([new Date(2007,0), new Date(2007,11)]).range([0, width]);
+        var x4 = d3.time.scale().domain([new Date(2007,0), new Date(2016,11)]).range([0, width]);
+        var y4 = d3.scale.linear().domain([0, 30]).range([height, 0]);
+        var colorScale4 = d3.scale.category10();
+
+        // Define the axes
+        var xAxis4 = d3.svg.axis()
+            .orient("bottom")
+            .scale(x4)
+          //  .ticks(d3.time.months)
+          //  .tickFormat(d3.time.format("%b"));
+
+        var yAxis4 = d3.svg.axis().scale(y4).orient("left");
+
+
+        // Add the X Axis
+        svg4.append("g")
+            .attr("class", "x axis")
+            .attr("transform", "translate(0," + height + ")")
+            .call(xAxis4);
+
+        // Add the Y Axis
+        svg4.append("g")
+            .attr("class", "y axis")
+            .call(yAxis4);
+
+
+        // Add y-axis label
+        svg4.append("text")
+            .attr("class", "y label")
+            .attr("transform", "rotate(-90)")
+            .attr("y", 0- margin.left)
+            .attr("x", 0-(height/2))
+            .attr("dy", "1em")
+            .attr("text-anchor", "middle")
+            .text("Average Delay Duration (minutes)")
+
+        // Add title
+        title4 = svg4.append('text')
+            .attr("class", "title")
+            .attr("x", "50%")
+            .attr("y", "1%")
+            .attr("text-anchor", "middle")
+            .style("font-size", "16px")
+            .style("font-weight", "bold")
+            .text("Flight Delay Causes");
+
+            
+
+        // Define the line
+        var delayline = d3.svg.line()
+            .interpolate("linear")
+            .x(function(d) { return x4(d.dateLabel); })
+            .y(function(d) { return y4(d.delayAve_in_mins); });
+
+        debugger;
+
+        // Add tooltip area to webpage
+        var tooltip4 = d3.select("#Chart3")
+                        .append("div")
+                        .attr("class", "tooltip")
+                        .style("opacity", 0);
+
+        // Format value to 2 decimal place
+        var formatDec = d3.format(".2f")
+
+
+        // Nest data entries by delay types
+        var nested_lines = d3.nest()
+            .key(function(d) { return d['date'].getFullYear();})
+            .key(function(d) { return d['delay_types'];})
+            .entries(data1);
+        debugger;
+
+        svg4.append('g')
+                 .attr("class", "line")
+                 .selectAll("path")
+                 //.data([])
+                 .data(nested_lines[0].values)
+                 .enter()
+                 .append("path")
+                 .attr("d", function(d) { return delayline(d.values)})
+                 .style("stroke", function(d) { 
+                    //console.log(d);
+                    return colorScale4(d.key)} )
+                 .style("stroke-width", 2)
+
+
+
+        debugger;
+        
+
+        function update3(year) {
+            var filtered_lines = nested_lines.filter(function(d) {
+                //console.log(d);
+                return new Date(d['key']).getFullYear() === year;
+             });
+
+            debugger;
+            // Set the ranges / scale
+            //var x4 = d3.time.scale().domain([new Date(year,0), new Date(year,11)]).range([0, width]);
+            var y4 = d3.scale.linear().domain([0, 30]).range([height, 0]);
+            var colorScale4 = d3.scale.category10();
+
+            // Define the axes
+            
+            var xAxis4 = d3.svg.axis()
+                .orient("bottom")
+                .scale(x4)
+                .ticks(d3.time.months)
+                .tickFormat(d3.time.format("%b"));
+                
+
+            var yAxis4 = d3.svg.axis().scale(y4).orient("left");
+
+
+            // Add the X Axis
+            svg4.append("g")
+                .attr("class", "x axis")
+                .attr("id", "xAxis4delete")
+                .attr("transform", "translate(0," + height + ")")
+                .call(xAxis4);
+
+            // Add the Y Axis
+            svg4.append("g")
+                .attr("class", "y axis")
+                .attr("id", "yAxis4delete")
+                .call(yAxis4);
+
+
+            // Define the line
+            var delayline_ = d3.svg.line()
+                .interpolate("linear")
+                .x(function(d) { return x4(d.dateLabel); })
+                .y(function(d) { return y4(d.delayAve_in_mins); });
+
+
+            debugger;
+             // ===========>
+            // view the data:
+            //console.log(filtered);
+
+            title4.text("Flight Delay Causes in " + Math.round(year));
+
+            svg4.select('#xAxis4delete').remove();
+            svg4.select('#yAxis4delete').remove();
+            //svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove();            
+
+            lines = svg4.selectAll('path1')
+                        .data(filtered_lines[0].values)
+            //console.log(lines);
+
+            //if ( year >2007 && )
+
+            lines.enter()
+                  .append('path')
+                  .attr("class", "line")
+                  .attr("d", function(d) { 
+                      //console.log(d); 
+                      return delayline_(d.values); })
+                  .style("stroke", function(d) { return d.color = colorScale4(d.key); })
+
+                  .attr("stroke-width", function(d) {
+                    //console.log(d);
+                      if (d.values[0].delayAve_delta >0) { return 4}
+                      else { return 2} })
+                  
+                  .on("mouseover", function(d) { 
+                    var xDate = x4.invert(d3.mouse(this)[0]),
+                        bisect =  d3.bisector(function(s) {return s.dateLabel; }).left,
+                        idx = bisect(d.values, xDate);
+
+                    tooltip4.transition()
+                          .duration(0)
+                          .style("opacity", .9);
+                    tooltip4.html(d.values[idx].delay_types + "</br> (" + d.values[idx].dateLabel_org + ": " + formatDec(d.values[idx].delayAve_in_mins) + ")")
+                          .style("left", (d3.event.pageX) + "px")
+                          .style("top", (d3.event.pageY -400 ) + "px")
+                  })
+                  .on("mouseout", function(d) {
+                      tooltip4.transition()
+                            .duration(0)
+                            .style("opacity", 0)
+                  });
+                  debugger;
+            // add legend   
+            var  legend = svg4.append("g")
+                              .attr("class", "legend")
+                              //.attr("transform", "translate (" + (width-5) +", " +20+ ")")
+                              .selectAll('g')
+                              .data(filtered_lines[0].values)
+                              .enter()
+                              .append("g")
+                              
+            legend.append('text')
+                              .attr("transform", function(d) { 
+                                  return "translate(" + x4(d.values[d.values.length - 1].dateLabel) + "," + y4(d.values[d.values.length - 1].delayAve_in_mins) + ")"; } )
+                              //.attr("transform", function(d) { 
+                               //   return "translate(" + (width-0.5) + "," + y4(d.values[d.values.length - 1].delayAve_in_mins) + ")"; } )
+                              .style("fill", function(d) {return d.color = colorScale4(d.key); })
+                              .text(function(d) {return d.key})
+
+            lines.exit().remove();
+
+            
+
+
+
+        
+      } // end of update(year)
+
+      //update(2008)
+      var years = [];
+
+      for (var year = 2007; year <= 2016; year += 1) {
+          years.push(year);
+      }
+    
+      var year_idx = 0;
+
+      var year_interval = setInterval(function() {
+        update3(years[year_idx]);
+
+        year_idx++;
+
+        if (year_idx >= years.length) {
+          clearInterval(year_interval);
+
+          /* // closure loop not working, it removes year on title and legend
+          for (var year=2007; year<=2016; year++) {
+                      (function(year) {
+                        document.getElementById(String(year)).addEventListener("click", function() {
+                            d3.select(".years_buttons")
+                              .selectAll("div")
+                              .transition()
+                              .duration(500)
+                              .style('color', 'black')
+                              .style('background', 'rgb(251, 201, 127)')
+
+                            d3.select(this)
+                              .transition()
+                              .duration(500)
+                              .style("background", "lightBlue")
+                              .style("color", "white");
+                            svg4.selectAll('.line').remove(); 
+                            svg4.selectAll('.legend').remove(); 
+                            
+                            if (year>2007) {
+                              var year_acc = years.slice(0,(years.indexOf(year))+1);
+
+                              for (j=0; j<=year_acc.length; j++) {
+                                update3(year_acc[j]);
+                              }
+                            } else {
+                              update3(2007);
+                            }
+              
+                        });
+                      })(year);
+              }*/
+
+          document.getElementById("2007").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+          });
+
+          document.getElementById("2008").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+          });
+
+          document.getElementById("2009").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+          });
+
+          document.getElementById("2010").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+          });
+
+          document.getElementById("2011").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+          });
+
+          document.getElementById("2012").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+            update3(2012);
+          });
+
+          document.getElementById("2013").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+            update3(2012);
+            update3(2013);
+          });
+
+          document.getElementById("2014").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+            update3(2012);
+            update3(2013);
+            update3(2014);
+          });
+
+          document.getElementById("2015").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+            update3(2012);
+            update3(2013);
+            update3(2014);
+            update3(2015);
+          });
+
+          document.getElementById("2016").addEventListener("click", function() {
+            svg4.selectAll('.line').remove(); 
+            svg4.selectAll('.legend').remove(); 
+            update3(2007);
+            update3(2008);
+            update3(2009);
+            update3(2010);
+            update3(2011);
+            update3(2012);
+            update3(2013);
+            update3(2014);
+            update3(2015);
+            update3(2016);
+
+          });
+        
+        }
+      }, 1000); // end of year_interval
+    
+
+
+    } // end of drawLines function
+    
+    //================================================================ END OF SVG4 CODES =====================================================
+   
+
+
+      
+      </script>
+  </head>
+ <h1> Delayed Flights in United States between 2007 and 2016 </h1>
+
+ 
+ <div class = "row">
+      <div class="col-md-6" id="Chart1"></div>
+      <div class="col-md-6" style="float:left; width:500px; max-width:500px; word-wrap:break-word;">
+        <p> <br> According to <a href="https://www.rita.dot.gov/bts/help_with_data/aviation/index.html">RITA</a>, monthly numbers of flight delays reported by each airlines to Bureau of Transportation Statistics (BTS) are splitted in five broad categories: air carrier, extreme weather, National Aviation Systems (NAS), late-arriving aircraft and security.  
+        <br><br>
+        Over the past ten years, US carriers have been striving to improve their flights performance, with Hawaiian Airlines leading as the most punctual carrier. However there seems to be some setbacks in 2013 and 2014. <br><br>Which delay categories do you think contribute to the setback and which airport is the most likely where the delay happened? 
+            </p></div>      
+</div>
+
+
+<div class ="row">
+    <div class="col-md-6" id="Chart3"></div>
+    <div class="col-md-6" id="Chart2"></div>
+</div>
+
+<div>
+  <p style="font-size:12px; padding-left :40px; font-weight: bold"> Note: Thick lines indicates higher delay average than previous year </p>
+</div>
+
+
+
+<body>
+  
+   <script src="https://d3js.org/d3.v3.min.js"></script>  
+
+  <script type="text/javascript">
+
+    /*
+    Load data for svg1
+    */
+    // Parse YEAR
+    var parseDate = d3.time.format("%Y").parse;
+
+    d3.csv("BubblePlotData_Ynew.csv", function(d) {
+      return {
+        YEAR : parseDate(d['YEAR']).getFullYear(),
+        CARRIER : d['CARRIER'],
+        carrier_names: d['carrier_names'],
+        ontime_arr_pct : +d['ontime_arr_pct'],
+        delay_arr_pct : +d['delay_arr_pct'],
+        total_flights : +d['total_flights']
+      };
+    }, drawBubbles);
+
+    /*
+    Use D3 to load the GeoJSON file for map chart (svg2)
+    */       
+    d3.json("USA_states_small.json", draw2);
+
+
+
+    /*
+    Load data for line chart- flight delay types
+    */
+    var parseFullDate = d3.time.format("%_d/%m/%Y").parse;
+    var parseDateLabel = d3.time.format("%b-%y").parse;
+
+    d3.csv("DelaysLineData_Mnew2.csv", function(d) {
+      return {
+        date : parseFullDate(d['Date']),
+        dateLabel : parseDateLabel(d['DateLabel']),
+        dateLabel_org : d['DateLabel'],
+        delay_types: d['Delay_Types'],
+        delay_in_mins : +d['Sums_in_mins'],
+        delayed_flights : +d['Delayed_Flights'],
+        total_flights : +d['Total_Flights'],
+        delayAve_in_mins : +d['DelayAve_in_mins'],
+        delayAve_by_Year : +d['delayAve_by_Year'],
+        delayAve_delta : +d['delayAve_delta']
+      };
+    }, drawLines);
+
+
+
+  </script>
+</body>
+</html>
+
