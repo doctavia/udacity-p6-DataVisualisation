@@ -1,0 +1,611 @@
+---
+title: "P6_Flights_EDA"
+output: html_document
+---
+Monthly dataset downloaded from BTS website was combined by year 
+
+```{r Combine multiple .csv's into one }
+# Source:
+### https://stackoverflow.com/questions/33805324/how-to-combine-many-csv-files-into-a-large-csv-without-holding-the-whole-object/33805604
+
+Files <- Sys.glob("FD_2007_*.csv") # modify as appropriate
+outFile <- "FD_2007.csv"
+
+for(f in Files) { 
+  L <- readLines(f)
+  if (f == Files[1]) cat(L, file = outFile, sep = "\n") 
+  else cat(L[-1], file = outFile, sep = "\n", append = TRUE)
+}
+```
+
+
+
+```{r Get Variables}
+FD_2016 <- read.csv('FD_2016.csv', header = TRUE, sep = ',')
+names(FD_2016)
+```
+
+After downloading ten years worth of data, month-by-month, I realized I missed two crucial variables (DepDel15 and ArrDel15) in the downloading process. These two variables indicate if a flight is ontime or delayed. Instead of repeating the download process, I decided to generate the two variables from the data available.
+
+```{r Get DEP_DELAY & ARR_DELAY for 2007-2016 Data}
+FD_2016$DEP_DELAY <- FD_2016$DEP_TIME - FD_2016$CRS_DEP_TIME
+FD_2016$ARR_DELAY <- FD_2016$ARR_TIME - FD_2016$CRS_ARR_TIME
+
+```
+
+```{r Subset required variables }
+FD_2016 <- FD_2016[, c(1:5,7:13, 16:21,26:30)]
+head(FD_2016)
+
+```
+
+```{r Add delay condition}
+# Count as delay if >= 15 mins
+# Arrival delay
+arrdelay_cond <- FD_2016$ARR_DELAY>=15
+FD_2016$ARR_DELAY15 <- ifelse(arrdelay_cond, 1, 0)
+rm(arrdelay_cond)
+
+arrontime_cond <- FD_2016$ARR_DELAY < 15
+FD_2016$ARR_OT15 <- ifelse(arrontime_cond, 1, 0)
+rm(arrontime_cond)
+
+# Departure Delay
+depdelay_cond <- FD_2016$DEP_DELAY>=15
+FD_2016$DEP_DELAY15 <- ifelse(depdelay_cond, 1, 0)
+rm(depdelay_cond)
+
+depontime_cond <- FD_2016$DEP_DELAY <15
+FD_2016$DEP_OT15 <- ifelse(depontime_cond, 1, 0)
+rm(depontime_cond)
+```
+
+```{r Table by YEAR, MONTH, DAY_OF_MONTH and Carrier}
+library(dplyr)
+
+FD_2016_DATE_CARRIER <- FD_2016 %>% 
+                              group_by(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK,CARRIER) %>% 
+                              summarise(sum_dep_delay = sum(DEP_DELAY15,na.rm=TRUE), sum_dep_ontime = sum(DEP_OT15, na.rm=TRUE),sum_arr_delay = sum(ARR_DELAY15,na.rm=TRUE), sum_arr_ontime = sum(ARR_OT15, na.rm=TRUE), sum_cancelled = sum(CANCELLED), sum_diverted = sum(DIVERTED), n = n())
+
+rm(FD_2016)
+
+```
+Due to size of the file, the four chunks above were repeated for each year. Rename in Scope feature comes in handy for this repetitive task.
+
+Data frames of each year was then combined to form one master data frame. 
+
+
+```{r Append all years into one}
+FD_Summary <- bind_rows(FD_2007_DATE_CARRIER, FD_2008_DATE_CARRIER, FD_2009_DATE_CARRIER, FD_2010_DATE_CARRIER, FD_2011_DATE_CARRIER, FD_2012_DATE_CARRIER, FD_2013_DATE_CARRIER, FD_2014_DATE_CARRIER, FD_2015_DATE_CARRIER, FD_2016_DATE_CARRIER)
+```
+
+
+```{r Rearrange data for CArrier Performance in stacked bar}
+library(tidyr)
+
+library(dplyr)
+
+df <- FD_2016_DATE_CARRIER %>% group_by(CARRIER) %>% 
+                              summarise(dep_delay = sum(sum_dep_delay,na.rm=TRUE), 
+                                        dep_ontime = sum(sum_dep_ontime, na.rm=TRUE),
+                                        arr_delay = sum(sum_arr_delay,na.rm=TRUE), 
+                                        arr_ontime = sum(sum_arr_ontime, na.rm=TRUE), 
+                                        cancelled = sum(sum_cancelled),
+                                        n = n())
+```
+
+```{r}
+df_arr <- subset(df, select = -c(dep_delay, dep_ontime))
+df_gather = gather(df_arr, "category", "counts", 2:4)
+
+# Get the levels for type in the required order
+df_gather$category = factor(df_gather$category, levels = c("arr_ontime", "arr_delay","cancelled"))
+#df_gather = arrange(df_gather, CARRIER, desc(category))
+
+```
+```{r}
+# Calculate %
+library(plyr)
+df_gather = ddply(df_gather, .(CARRIER), transform, percent = counts/sum(counts) *100)
+
+# Format labels and calculate positions
+df_gather = ddply(df_gather, .(CARRIER), transform, pos = (cumsum(counts) - 0.5*counts))
+df_gather$label = paste0(sprintf("%.1f", df_gather$percent), "%")
+
+# Reorder carrier
+df_gather$CARRIER <- factor(df_gather$CARRIER, levels = df_gather$CARRIER[order(df_gather$category, df_gather$percent, df_gather$CARRIER)], ordered = TRUE)
+
+#Plot
+ggplot(df_gather, aes(x = factor(CARRIER), y = log(counts), fill = df_gather$category)) +
+  geom_bar(position = position_stack(), stat = 'identity', width = 0.7) + 
+  geom_text(aes(label = label), position = position_stack(vjust = 0.9), size = 2) + 
+  ggtitle("US Flight Carriers Performance in 2016") +
+  xlab("Carrier") + 
+  scale_fill_discrete(name='Category',
+                      breaks=c("arr_ontime", "arr_delay", "cancelled"),
+                      labels=c("Ontime Arrival", "Delayed Arrival", "Cancelled Flight"))+
+  coord_flip()
+
+detach("package:plyr", unload=TRUE) 
+
+```
+
+The stacked bar did not look visually pleasing so I moved on to another idea. Let's try to implement Hans Rosling's famous wealth and health of nations chart design onto this flight data! 
+
+```{r Group data by year and carrier}
+library(dplyr)
+
+df_arrival <- FD_Summary %>% group_by(YEAR, CARRIER) %>% 
+                              summarise(dep_delay = sum(sum_dep_delay,na.rm=TRUE), 
+                                        dep_ontime = sum(sum_dep_ontime, na.rm=TRUE),
+                                        arr_delay = sum(sum_arr_delay,na.rm=TRUE), 
+                                        arr_ontime = sum(sum_arr_ontime, na.rm=TRUE), 
+                                        cancelled = sum(sum_cancelled),
+                                        diverted = sum(sum_diverted),
+                                        n = n())
+
+# Calculate percentage of delay and ontime arrival
+df_arrival$total_flights <- rowSums(df_arrival[,5:8])
+df_arrival$delay_arr_pct <- df_arrival$arr_delay/df_arrival$total_flights*100
+df_arrival$ontime_arr_pct <- df_arrival$arr_ontime/df_arrival$total_flights*100
+```
+
+```{r Plot bubble plots using symbols}
+# https://flowingdata.com/2010/11/23/how-to-make-bubble-charts/
+
+data_plot <- subset(df_arrival, YEAR == 2008)
+
+radius <- sqrt( data_plot$total_flights/ pi)
+
+symbols(data_plot$delay_arr_pct, data_plot$ontime_arr_pct, 
+        circles=radius, 
+        inches = 0.2,
+        col = 'red', 
+        xlab = "Delayed Arrival (%)", 
+        ylab = "Ontime Arrival (%)", 
+        main = "US Carriers Performance in 2008")
+
+label = data_plot$CARRIER
+
+text(x=data_plot$delay_arr_pct, y=data_plot$ontime_arr_pct, labels = label, cex=0.75, pos = 2, col = 'red')
+
+```
+
+This design shows the carrier performance well for each year, this is going into the webpage.
+
+
+```{r Plot bubble chart using ggplot}
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+
+data_plot <- subset(df_arrival, YEAR == 2016)
+
+data_plot$radius <- sqrt( data_plot$total_flights/ pi)
+
+colorCount = length(data_plot$CARRIER)
+getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+
+ggplot(data_plot, aes(x = delay_arr_pct, y = ontime_arr_pct)) + 
+  geom_jitter(aes(size = total_flights), color = "blue", alpha = 0.5)+
+  #scale_fill_manual(values = getPalette(colorCount)) + 
+  geom_text_repel(aes(label = CARRIER), size = 3) + 
+  scale_size_continuous(range = c(1,20)) + 
+  scale_x_continuous(lim = c(5,35), breaks = seq(5, 35,5)) + 
+  scale_y_continuous(lim = c(60,95), breaks = seq(60, 95,10)) + 
+  ggtitle("US Carriers Performance in 2016") + 
+  xlab( "Delayed Arrival (%)")+ 
+  ylab("Ontime Arrival (%)")
+  
+
+
+```
+
+
+After putting the bubble charts together, there seems to be ontime performance setbacks in year 2013 and 2014 so I decided to find out where the delays happened and what caused them.
+
+Due to the size of the master data frame, the data for each chart will be stored in a separate csv file.
+
+Data is getting re-organised to generate three different dataset: 
+
+```{r Step 1: Check variables }
+names(FD_2007)
+```
+
+
+```{r Step 2: Applied delay condition to find delayed and ontime flights}
+FD_2007 <- FD_2007[, c(1:5,7:12, 15:19,24:28, 30:31)]
+
+# Count as delay if >= 15 mins
+# Arrival delay
+arrdelay_cond <- FD_2007$ARR_DELAY>=15
+FD_2007$ARR_DELAY15 <- ifelse(arrdelay_cond, 1, 0)
+rm(arrdelay_cond)
+
+
+arrontime_cond <- FD_2007$ARR_DELAY < 15
+FD_2007$ARR_OT15 <- ifelse(arrontime_cond, 1, 0)
+rm(arrontime_cond)
+
+
+# Departure Delay
+depdelay_cond <- FD_2007$DEP_DELAY>=15
+FD_2007$DEP_DELAY15 <- ifelse(depdelay_cond, 1, 0)
+rm(depdelay_cond)
+gc()
+
+
+depontime_cond <- FD_2007$DEP_DELAY <15
+FD_2007$DEP_OT15 <- ifelse(depontime_cond, 1, 0)
+rm(depontime_cond)
+
+```
+
+The yearly data was then subsetted into three datasets: origin airport for flight departure data, destination airport for flights arrival data and dataset subsetted by carriers. The latter dataset will be used to generate datasets for carrier performance and flight delay causes charts.
+
+```{r Split yearly data into three datasets}
+library(dplyr)
+
+# Origin Airport
+FD_2007_ORIGIN <- FD_2007 %>% 
+  group_by(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK,CARRIER, ORIGIN) %>% 
+    summarise(dep_delay = sum(DEP_DELAY15,na.rm=TRUE), 
+              dep_ontime = sum(DEP_OT15, na.rm=TRUE),
+              arr_delay = sum(ARR_DELAY15,na.rm=TRUE), 
+              arr_ontime = sum(ARR_OT15, na.rm=TRUE), 
+              cancelled = sum(CANCELLED), 
+              diverted = sum(DIVERTED), 
+              carrier_delay = sum(CARRIER_DELAY, na.rm = TRUE),
+              weather_delay = sum(WEATHER_DELAY, na.rm = TRUE),
+              nas_delay = sum(NAS_DELAY, na.rm = TRUE),
+              security_delay = sum(SECURITY_DELAY, na.rm = TRUE),
+              lateAircraft_delay = sum(LATE_AIRCRAFT_DELAY, na.rm = TRUE),
+              n = n())
+
+# Destination Airport
+FD_2007_DEST <- FD_2007 %>% 
+  group_by(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK,CARRIER, DEST) %>% 
+    summarise(dep_delay = sum(DEP_DELAY15,na.rm=TRUE), 
+              dep_ontime = sum(DEP_OT15, na.rm=TRUE),
+              arr_delay = sum(ARR_DELAY15,na.rm=TRUE), 
+              arr_ontime = sum(ARR_OT15, na.rm=TRUE), 
+              cancelled = sum(CANCELLED), 
+              diverted = sum(DIVERTED), 
+              carrier_delay = sum(CARRIER_DELAY, na.rm = TRUE),
+              weather_delay = sum(WEATHER_DELAY, na.rm = TRUE),
+              nas_delay = sum(NAS_DELAY, na.rm = TRUE),
+              security_delay = sum(SECURITY_DELAY, na.rm = TRUE),
+              lateAircraft_delay = sum(LATE_AIRCRAFT_DELAY, na.rm = TRUE),
+              n = n())
+
+# Subset by Carrier
+FD_2007_DATE_CARRIER <- FD_2007 %>% 
+  group_by(YEAR, MONTH, DAY_OF_MONTH, DAY_OF_WEEK,CARRIER) %>% 
+    summarise(dep_delay = sum(DEP_DELAY15,na.rm=TRUE), 
+              dep_ontime = sum(DEP_OT15, na.rm=TRUE),
+              arr_delay = sum(ARR_DELAY15,na.rm=TRUE), 
+              arr_ontime = sum(ARR_OT15, na.rm=TRUE), 
+              cancelled = sum(CANCELLED), 
+              diverted = sum(DIVERTED), 
+              carrier_delay = sum(CARRIER_DELAY, na.rm = TRUE),
+              weather_delay = sum(WEATHER_DELAY, na.rm = TRUE),
+              nas_delay = sum(NAS_DELAY, na.rm = TRUE),
+              security_delay = sum(SECURITY_DELAY, na.rm = TRUE),
+              lateAircraft_delay = sum(LATE_AIRCRAFT_DELAY, na.rm = TRUE),
+              n = n())
+
+```
+
+
+```{r Append all years into one}
+# DATE_CARRIER
+FD_DATE_CARRIER <- bind_rows(FD_2007_DATE_CARRIER, FD_2008_DATE_CARRIER, FD_2009_DATE_CARRIER, FD_2010_DATE_CARRIER, FD_2011_DATE_CARRIER, FD_2012_DATE_CARRIER, FD_2013_DATE_CARRIER, FD_2014_DATE_CARRIER, FD_2015_DATE_CARRIER, FD_2016_DATE_CARRIER)
+```
+```{r Append all years into one}
+# ORIGIN
+FD_ORIGIN <- bind_rows(FD_2007_ORIGIN, FD_2008_ORIGIN, FD_2009_ORIGIN, FD_2010_ORIGIN, FD_2011_ORIGIN, FD_2012_ORIGIN, FD_2013_ORIGIN, FD_2014_ORIGIN, FD_2015_ORIGIN, FD_2016_ORIGIN)
+```
+
+```{r Append all years into one}
+# DEST
+FD_DEST <- bind_rows(FD_2007_DEST, FD_2008_DEST, FD_2009_DEST, FD_2010_DEST, FD_2011_DEST, FD_2012_DEST, FD_2013_DEST, FD_2014_DEST, FD_2015_DEST, FD_2016_DEST)
+```
+
+## Carrier Performance Chart
+```{r Carrier Performance Chart Data}
+# Group data by year and carrier
+library(dplyr)
+
+df_arrival_year <- FD_DATE_CARRIER %>% group_by(YEAR, CARRIER) %>% 
+                              summarise(dep_delay = sum(dep_delay,na.rm=TRUE), 
+                                        dep_ontime = sum(dep_ontime, na.rm=TRUE),
+                                        arr_delay = sum(arr_delay,na.rm=TRUE), 
+                                        arr_ontime = sum(arr_ontime, na.rm=TRUE), 
+                                        cancelled = sum(cancelled),
+                                        diverted = sum(diverted),
+                                        carrier_delay = sum(carrier_delay, na.rm = TRUE),
+                                        weather_delay = sum(weather_delay, na.rm = TRUE),
+                                        nas_delay = sum(nas_delay, na.rm = TRUE),
+                                        security_delay = sum(security_delay, na.rm = TRUE),
+                                        lateAircraft_delay = sum(lateAircraft_delay, na.rm = TRUE),
+                                        n = n())
+
+# Calculate percentage of delay and ontime arrival
+df_arrival_year$total_flights <- rowSums(df_arrival_year[,6:9]) 
+df_arrival_year$delay_arr_pct <- df_arrival_year$arr_delay/df_arrival_year$total_flights*100
+df_arrival_year$ontime_arr_pct <- df_arrival_year$arr_ontime/df_arrival_year$total_flights*100
+
+
+#For bubble chart plotting, subset data by year
+```
+
+
+```{r Plot bubble chart using ggplot}
+library(ggplot2)
+library(ggrepel)
+#library(RColorBrewer)
+library(manipulate)
+library(gridExtra)
+
+data_plot <- subset(df_arrival_year, YEAR == 2016) # modify year 
+
+data_plot$radius <- sqrt( data_plot$total_flights/ pi)
+
+delays <- data.frame(delay_types = names(colSums(data_plot[,9:13])), delay_minutes = colSums(data_plot[,9:13]) )
+#colorCount = length(data_plot$CARRIER)
+#getPalette = colorRampPalette(brewer.pal(9, "Set1"))
+layout(matrix(1:2, ncol=1), heights=c(3,1))
+par(mar=c(0,3,3,2))
+
+ggplot(data_plot, aes(x = delay_arr_pct, y = ontime_arr_pct)) + 
+  geom_jitter(aes(size = total_flights), color = "blue", alpha = 0.5)+
+  #scale_fill_manual(values = getPalette(colorCount)) + 
+  geom_text_repel(aes(label = CARRIER), size = 3) + 
+  scale_size_continuous(range = c(1,20)) + 
+  scale_x_continuous(lim = c(5,35), breaks = seq(5, 35,5)) + 
+  scale_y_continuous(lim = c(60,95), breaks = seq(60, 95,10)) + 
+  ggtitle("US Carriers Performance in 2016") + 
+  xlab( "Delayed Arrival (%)")+ 
+  ylab("Ontime Arrival (%)")
+ 
+par(mar=c(3,3,0,2))
+ 
+ggplot(data=delays, aes(x = delay_types, y=delay_minutes)) +
+  geom_bar(stat="identity", color = 'blue') +
+  theme(axis.text.x=element_text(angle=90,hjust=1,size = 12, face = "bold"))+
+  scale_y_continuous(lim = c(0,40000000), breaks = seq(0,40000000,10000000)) +
+  xlab("Delay Types") + 
+  ylab("Delayed Time (minutes)")
+
+#grid.arrange(bubbleplot, delay_plot, ncol =1, top = "US Carriers Performance in 2007")
+
+```
+
+
+## Flight Delay Types
+
+The next step is to get data for flight delay causes (or types). The visualisation will be a line chart with monthly data for ten years. 
+
+```{r Monthly Data for Delay Types (or Line Chart)}
+library(dplyr)
+
+df_arrival_month <- FD_DATE_CARRIER %>% group_by(YEAR, MONTH, CARRIER) %>% 
+                              summarise(dep_delay = sum(dep_delay,na.rm=TRUE), 
+                                        dep_ontime = sum(dep_ontime, na.rm=TRUE),
+                                        arr_delay = sum(arr_delay,na.rm=TRUE), 
+                                        arr_ontime = sum(arr_ontime, na.rm=TRUE), 
+                                        cancelled = sum(cancelled),
+                                        diverted = sum(diverted),
+                                        carrier_delay = sum(carrier_delay, na.rm = TRUE),
+                                        weather_delay = sum(weather_delay, na.rm = TRUE),
+                                        nas_delay = sum(nas_delay, na.rm = TRUE),
+                                        security_delay = sum(security_delay, na.rm = TRUE),
+                                        lateAircraft_delay = sum(lateAircraft_delay, na.rm = TRUE),
+                                        n = n())
+
+
+# Calculate percentage of delay and ontime arrival
+df_arrival_month$total_flights <- rowSums(df_arrival_month[,5:8])
+df_arrival_month$delay_arr_pct <- df_arrival_month$arr_delay/df_arrival_month$total_flights*100
+df_arrival_month$ontime_arr_pct <- df_arrival_month$arr_ontime/df_arrival_month$total_flights*100
+
+
+library(tidyr)
+df_arrival_month$DateLabel <- paste( month.abb[df_arrival_month$MONTH],df_arrival_month$YEAR, 
+                                     sep = " ")
+
+df_arrival_month <- unite(df_arrival_month, "Date", YEAR, MONTH, sep = " ")
+
+df_arrival_month$Date <- as.Date(paste0("1", df_arrival_month$DateLabel), format = "%d%b %Y")
+
+#For bubble chart plotting, subset data by Date
+
+```
+
+
+```{r Data for 5 delay types line chart monthly }
+
+df <- df_arrival_month %>% group_by (Date, DateLabel) %>% 
+                            summarise(dep_delay = sum(dep_delay,na.rm=TRUE), 
+                                      dep_ontime = sum(dep_ontime, na.rm=TRUE),
+                                      arr_delay = sum(arr_delay,na.rm=TRUE), 
+                                      arr_ontime = sum(arr_ontime, na.rm=TRUE), 
+                                      cancelled = sum(cancelled),
+                                      diverted = sum(diverted),
+                                      carrier_delay = sum(carrier_delay, na.rm = TRUE),
+                                      weather_delay = sum(weather_delay, na.rm = TRUE),
+                                      nas_delay = sum(nas_delay, na.rm = TRUE),
+                                      security_delay = sum(security_delay, na.rm = TRUE),
+                                      lateAircraft_delay = sum(lateAircraft_delay, na.rm = TRUE),
+                                      total_flights = sum(total_flights),
+                                      n = n())
+  
+
+df_gather <- gather(df[,c(1:2, 9:13)], "Delay_Types", "Sums", 3:7)
+
+```
+
+```{r Plot line chart}
+library(ggplot2)
+ggplot(df_gather, aes(x = Date, y = Sums, colour = Delay_Types)) + 
+  geom_line(aes(group = Delay_Types)) +
+  theme(axis.text.x=element_text(angle=90,hjust=1, size = 6))+
+  scale_x_date(labels = date_format("%Y"), date_breaks = '1 year', date_minor_breaks = '1 month') + 
+  #scale_x_continuous(lim = c(2007,2016), breaks = seq(2007,2016,1)) +
+  #scale_x_discrete(limits = DateLabel) + 
+  ylab("Sums of Delay Duration (minutes)")+
+  xlab("Year")
+```
+
+
+## Airports Data
+The idea for delayed departure and arrival flights is to plot it on GeoJSON map, hence I will need to latitude and longitude of each airport, airport name, city and state details. 
+
+```{r Data for Origin and Dest Airports by Year}
+FD_ORIGIN_finalY <- FD_ORIGIN %>% group_by(YEAR, ORIGIN) %>% 
+                        summarise(dep_delay_org = sum(dep_delay,na.rm=TRUE), 
+                                  dep_ontime_org = sum(dep_ontime, na.rm=TRUE),
+                                  arr_delay_org = sum(arr_delay,na.rm=TRUE), 
+                                  arr_ontime_org = sum(arr_ontime, na.rm=TRUE), 
+                                  cancelled_org = sum(cancelled),
+                                  diverted_org = sum(diverted),
+                                  carrier_delay_org = sum(carrier_delay, na.rm = TRUE),
+                                  weather_delay_org = sum(weather_delay, na.rm = TRUE),
+                                  nas_delay_org = sum(nas_delay, na.rm = TRUE),
+                                  security_delay_org = sum(security_delay, na.rm = TRUE),
+                                  lateAircraft_delay_org = sum(lateAircraft_delay, na.rm = TRUE),
+                                  n_org = n())
+
+FD_DEST_finalY <- FD_DEST %>% group_by(YEAR, DEST) %>% 
+                        summarise(dep_delay_Dest = sum(dep_delay,na.rm=TRUE), 
+                                  dep_ontime_Dest = sum(dep_ontime, na.rm=TRUE),
+                                  arr_delay_Dest = sum(arr_delay,na.rm=TRUE), 
+                                  arr_ontime_Dest = sum(arr_ontime, na.rm=TRUE), 
+                                  cancelled_Dest = sum(cancelled),
+                                  diverted_Dest = sum(diverted),
+                                  carrier_delay_Dest = sum(carrier_delay, na.rm = TRUE),
+                                  weather_delay_Dest = sum(weather_delay, na.rm = TRUE),
+                                  nas_delay_Dest = sum(nas_delay, na.rm = TRUE),
+                                  security_delay_Dest = sum(security_delay, na.rm = TRUE),
+                                  lateAircraft_delay_Dest = sum(lateAircraft_delay, na.rm = TRUE),
+                                  n_Dest = n())
+
+# Change airport code (ORIGIN and DEST) to iata
+colnames(FD_ORIGIN_finalY)[2] <- "iata"
+colnames(FD_DEST_finalY)[2] <- "iata"
+
+# Join ORIGIN_finalY and DEST_finalY by iata
+FD_AIRPORTS_finalY <- left_join(FD_ORIGIN_finalY, FD_DEST_finalY, by = c("YEAR","iata"))
+
+# import airport details
+setwd("~/P6_Data Visualization_D3/P6 Project/Tidy Project Data")
+Airports <- read.csv('airports.csv', header = TRUE, sep = ',')
+
+# Join airports details 
+FD_AIRPORTS_JOINY <- left_join(FD_AIRPORTS_finalY, Airports, by = "iata")
+
+```
+
+```{r Data for Origin and Dest Airports by Month}
+FD_ORIGIN_finalM <- FD_ORIGIN %>% group_by(YEAR, MONTH, ORIGIN) %>% 
+                            summarise(dep_delay_org = sum(dep_delay,na.rm=TRUE), 
+                                  dep_ontime_org = sum(dep_ontime, na.rm=TRUE),
+                                  arr_delay_org = sum(arr_delay,na.rm=TRUE), 
+                                  arr_ontime_org = sum(arr_ontime, na.rm=TRUE), 
+                                  cancelled_org = sum(cancelled),
+                                  diverted_org = sum(diverted),
+                                  carrier_delay_org = sum(carrier_delay, na.rm = TRUE),
+                                  weather_delay_org = sum(weather_delay, na.rm = TRUE),
+                                  nas_delay_org = sum(nas_delay, na.rm = TRUE),
+                                  security_delay_org = sum(security_delay, na.rm = TRUE),
+                                  lateAircraft_delay_org = sum(lateAircraft_delay, na.rm = TRUE),
+                                  n_org = n())
+
+FD_DEST_finalM <- FD_DEST %>% group_by(YEAR, MONTH, DEST) %>% 
+                            summarise(dep_delay_Dest = sum(dep_delay,na.rm=TRUE), 
+                                  dep_ontime_Dest = sum(dep_ontime, na.rm=TRUE),
+                                  arr_delay_Dest = sum(arr_delay,na.rm=TRUE), 
+                                  arr_ontime_Dest = sum(arr_ontime, na.rm=TRUE), 
+                                  cancelled_Dest = sum(cancelled),
+                                  diverted_Dest = sum(diverted),
+                                  carrier_delay_Dest = sum(carrier_delay, na.rm = TRUE),
+                                  weather_delay_Dest = sum(weather_delay, na.rm = TRUE),
+                                  nas_delay_Dest = sum(nas_delay, na.rm = TRUE),
+                                  security_delay_Dest = sum(security_delay, na.rm = TRUE),
+                                  lateAircraft_delay_Dest = sum(lateAircraft_delay, na.rm = TRUE),
+                                  n_Dest = n())
+
+# Change airport code (ORIGIN and DEST) to iata
+colnames(FD_ORIGIN_finalM)[3] <- "iata"
+colnames(FD_DEST_finalM)[3] <- "iata"
+
+# Join ORIGIN_finalM and DEST_finalM by iata
+FD_AIRPORTS_finalM <- left_join(FD_ORIGIN_finalM, FD_DEST_finalM, by = c("YEAR","MONTH","iata"))
+
+# import airport details
+#setwd("~/P6_Data Visualization_D3/P6 Project/Tidy Project Data")
+#Airports <- read.csv('airports.csv', header = TRUE, sep = ',')
+
+# Join airports details 
+FD_AIRPORTS_JOINM <- left_join(FD_AIRPORTS_finalM, Airports, by = "iata")
+
+
+# Unite YEAR and MONTH
+FD_AIRPORTS_JOINM$DateLabel <- paste( month.abb[FD_AIRPORTS_JOINM$MONTH],FD_AIRPORTS_JOINM$YEAR, 
+                                     sep = " ")
+
+FD_AIRPORTS_JOINM <- unite(FD_AIRPORTS_JOINM, "Date", YEAR, MONTH, sep = " ")
+
+FD_AIRPORTS_JOINM$Date <- as.Date(paste0("1", FD_AIRPORTS_JOINM$DateLabel), format = "%d%b %Y")
+```
+
+
+## Export Data into CSV Files
+
+```{r Write to .csv file}
+
+write.csv(df_arrival_month, file = "BubblePlotData_M.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+write.csv(df_arrival_year, file = "BubblePlotData_Y.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+write.csv(df_gather, file = "DelaysLineData_M.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+write.csv(FD_AIRPORTS_JOINM, file = "AirportsData_M.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+write.csv(FD_AIRPORTS_JOINY, file = "AirportsData_Y.csv", quote = FALSE, dec = ".", col.names = TRUE)
+```
+
+
+Some changes made to files in the later stage:
+```{r Calculate average delay duration in mins}
+# Delay_Types LineChart
+library(dplyr)
+
+Test <- FD_2016 %>% group_by(YEAR, MONTH) %>% 
+                              summarise(
+                                        delayed_flights = sum(!is.na(CARRIER_DELAY), na.rm = TRUE),
+                                        total_flights = sum(!is.na(YEAR), na.rm = TRUE),
+                                        n = n())
+```
+
+
+```{r Calculate delay percentage of each airport by Month}
+#https://stackoverflow.com/questions/27134516/summarizing-by-subgroup-percentage-in-r
+
+AirportM <- read.csv("AirportsData_M.csv", header =  TRUE, sep = ",")
+
+library(dplyr)
+add_percent <- group_by(AirportM, DateLabel) %>% mutate(percent = dep_delay_org*100/sum(dep_delay_org))
+
+
+write.csv(add_percent_year, file = "AirportsData_M3.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+```
+
+```{r Calculate delay percentage of each airport by year}
+AirportM$Year <- format(as.Date(AirportM$Date, format = "%d/%m/%Y"), "%Y")
+add_percent_year <- group_by(AirportM, Year) %>% mutate(percent_year = dep_delay_org*100/sum(dep_delay_org))
+
+write.csv(add_percent_year, file = "AirportsData_M3.csv", quote = FALSE, dec = ".", col.names = TRUE)
+
+```
