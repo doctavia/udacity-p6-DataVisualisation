@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="https://d3js.org/d3.v3.min.js"></script>
+  <script src="https://d3plus.org/js/d3plus.js"></script>
+  <script src="https://code.jquery.com/jquery.js"></script>
+
+  <title> US Carriers Performance </title>
+    <style type ="text/css">
+
+    h1 {
+        text-align: center;
+        font: 25px sans-serif;
+        font-weight: bold;
+    }
+
+    circle {     
+        stroke: black;
+        stroke-width: 0.7;
+        opacity: 0.9;
+    }
+
+    path { 
+        stroke: steelblue;
+        fill: none;
+    }
+
+    text{
+        font: 10px sans-serif;
+    }
+
+    .tooltip { 
+        position: absolute;     
+        text-align: center;     
+        width: 150px;          
+        height: 50px;         
+        padding: 2px;       
+        font: 10px sans-serif;   
+        font-weight: bold; 
+        background: lightsteelblue; 
+        border: 0px;    
+        border-radius: 8px;     
+        pointer-events: none;     
+    }
+
+    .axis path, .axis line {
+        fill: none;
+        stroke: black;
+        shape-rendering: crispEdges;
+        stroke-width: 2px;
+    }
+
+    .label {
+        fill: #777;
+    }
+
+    .year.label {
+        font: 500 100px "Helvetica Neue";
+        fill: #ddd;
+    }
+
+    .year.label.active {
+        fill: #aaa;
+    }
+
+    .overlay {
+        fill: none;
+        pointer-events: all;
+        cursor: ew-resize;
+    }
+
+    .select_year{
+        position: absolute;
+        top: 180px;
+        left: 1020px;
+    }
+
+    div.years_buttons {
+        position: absolute;
+        top: 200px;
+        left : 1020px;
+    }  
+
+    div.years_buttons div {
+        background-color: rgb(251, 201, 127);
+        border-radius: 2px;
+        padding: 3px;
+        margin: 7px;
+    }
+ 
+    div.airlines_buttons {
+        position: relative;
+        text-align: center;
+        top:400;
+        left:50;
+        width: 750px;
+    }
+
+    div.airlines_buttons div{
+        float: left;
+        display: inline;
+        border: 2px solid black;
+        border: 1.5px solid black;
+        text-align: center;
+        font-size: 14px;
+        padding: 5px 5px;
+        border-radius: 2px;
+        margin: 5px;
+        transition-duration: 0.4s;
+    }
+
+    .legend_text {
+        font: 12px sans-serif;
+        font-weight: bold;
+    }
+
+    </style>
+
+    <script type="text/javascript">  
+
+      function drawBubbles(data) {
+          function x(d) { return d.delay_arr_pct; }
+          function y(d) { return d.ontime_arr_pct; }
+          function radius(d) { return d.total_flights; }
+          function color(d) { return d.CARRIER; }
+          function key(d) { return d.CARRIER; }
+
+          // Set dimension of canvas
+          var margin = {top: 40, right: 100, bottom: 30, left: 40},
+              width = 800  - margin.right - margin.left,
+              height = 500 - margin.top - margin.bottom;
+
+          // Scales
+          var xScale = d3.scale.linear().domain([0,35]).range([0,width]),
+              yScale = d3.scale.linear().domain([50,100]).range([height,0]),
+              radiusScale = d3.scale.sqrt().domain([0, 500000]).range([0,20]),
+              colorScale = d3.scale.category20();
+
+          // x and y-axes
+          var xAxis = d3.svg.axis().orient("bottom").scale(xScale),
+              yAxis = d3.svg.axis().scale(yScale).orient("left");
+
+          // Add svg on webpage
+          var svg1 = d3.select("div#chart").append("svg")
+                .style("width", width + margin.left + margin.right)
+                .style("height", height + margin.top + margin.bottom)
+              .append("g")
+                .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+          // Add x-axis
+          svg1.append("g")
+              .attr("class", "x axis")
+              .attr("transform", "translate(0," + height + ")")
+              .call(xAxis);
+
+          // Add y-axis
+          svg1.append("g")
+              .attr("class", "y axis")
+              .call(yAxis);
+
+          // Add an x-axis label
+          svg1.append("text")
+              .attr("class", "x label")
+              .attr("text-anchor", "middle")
+              .attr("x", width/2)
+              .attr("y", height+margin.bottom/1.0)
+              .text("Delayed Arrival (%)")
+
+          // Add y-axis label
+          svg1.append("text")
+              .attr("class", "y label")
+              .attr("transform", "rotate(-90)")
+              .attr("y", 0- margin.left)
+              .attr("x", 0-(height/2))
+              .attr("dy", "1em")
+              .attr("text-anchor", "middle")
+              .text("Ontime Arrival (%)")
+
+           // Add overlay year label
+          var label = svg1.append("text")
+              .attr("class", "year label")
+              .attr("text-anchor", "end")
+              .attr("x", width)
+              .attr("y", height -24)
+              .text("2007");
+
+          // Add tooltip area to webpage
+          var tooltip1 = d3.select("body")
+              .append("div")
+              .attr("class", "tooltip")
+              .style("opacity", 0);
+
+          // Group data by YEAR
+          var NestedData =  d3.nest()
+              .key(function(d) { return d['YEAR']; })   
+              .entries(data);
+
+          // Smaller circle drawn on top
+          function order(a,b) {
+              return radius(b) - radius(a);
+          };
+
+          // Format value to 2 decimal place
+          var formatDec = d3.format(".2f")
+
+          // Carriers List and Assigned Color
+          // https://nickqizhu.github.io/d3-cookbook/src/chapter4/ordinal-scale.html
+          // http://www.rapidtables.com/web/color/RGB_Color.htm          
+
+          var carrier_colors2 = d3.entries(
+              {"All" : {fill:"none", opacity:0.9},
+                "AirTran": {fill:"#3182bd", circle_id: "AirTranAirways", circletext_id: "FL", opacity:0.9},
+                "Alaska": {fill:" #6baed6", circle_id: "AlaskaAirlines", circletext_id: "AS", opacity:0.9},
+                "Aloha": {fill:"#9ecae1", circle_id: "AlohaAirlines", circletext_id: "AQ", opacity:0.9},
+                "American": {fill:"#c6dbef", circle_id: "AmericanAirlines", circletext_id: "AA", opacity:0.9}, 
+                "American Eagle": {fill:"#ff7f0e", circle_id: "AmericanEagleAirlines", circletext_id: "MQ", opacity:0.9},
+                "Atlantic Southeast" :{fill:"#ffbb78", circle_id: "AtlanticSoutheastAirlines", circletext_id: "EV", opacity:0.9},
+                "Comair" :{ fill:"#2ca02c ", circle_id: "Comair_", circletext_id: "OH", opacity:0.9},
+                "Continental" :{fill:"#98df8a", circle_id: "ContinentalAirlines", circletext_id: "CO", opacity:0.9},
+                "Delta": {fill:"#d62728", circle_id: "DeltaAirlines", circletext_id: "DL", opacity:0.9},
+                "Expressjet" :{fill:"#ff9896", circle_id: "ExpressjetAirlines", circletext_id: "XE", opacity:0.9},
+                "Frontier": {fill:"#9467bd", circle_id: "FrontierAirlines", circletext_id: "F9", opacity:0.9},
+                "Hawaiian": {fill:"#c5b0d5", circle_id: "HawaiianAirlines", circletext_id: "HA", opacity:0.9},
+                "JetBlue": {fill:"#8c564b", circle_id: "JetBlueAirways", circletext_id: "B6", opacity:0.9},
+                "Mesa" :{fill:"#BD948C", circle_id: "MesaAirlines", circletext_id: "YV", opacity:0.9},
+                "Northwest": {fill:"#e377c2", circle_id: "NorthwestAirlines", circletext_id: "NW", opacity:0.9},
+                "Pinnacle": {fill:"#e8cee0", circle_id: "PinnacleAirlines", circletext_id: "9E", opacity:0.9},
+                "Skywest": {fill:"#7f7f7f", circle_id: "SkywestAirlines", circletext_id: "OO", opacity:0.9},
+                "Southwest": {fill:"#C0C0C0", circle_id: "SouthwestAirlines", circletext_id: "WN", opacity:0.9},
+                "Spirit": {fill:"#bcbd22", circle_id: "SpiritAirlines", circletext_id: "NK", opacity:0.9},
+                "United": {fill:"#efef29", circle_id: "UnitedAirlines", circletext_id: "UA", opacity:0.9},
+                "US": {fill:"#17becf", circle_id: "USAirways", circletext_id: "US", opacity:0.9},
+                "Virgin America":  {fill:"#6debf9", circle_id: "VirginAmerica", circletext_id: "VX", opacity:0.9}
+              }
+          )
+
+          // Chart showed before animation starts
+          svg1.append('g')
+               .selectAll("circle")
+               .data(NestedData[0].values)
+               .enter()
+               .append("circle")
+               .attr("cx", function(d) { return xScale(d.delay_arr_pct); })
+               .attr("cy", function(d) { return yScale(d.ontime_arr_pct); })
+               .attr("r", function(d) { return radiusScale(d.total_flights); })
+               .attr("fill", function(d) { return carrier_colors2[(carrier_colors2.map(function(v) { return v.key})).indexOf(d.carrier_shortnames)].value.fill })
+               .attr('opacity', 0.9)
+               .attr('stroke', 'black')
+               .attr('stroke-width', 0.7)
+               .sort(order)
+
+          //// Add legend and its text
+          // Specify legend position
+          var circle_base = 100,
+              legend_x = 550;
+
+          // Add legend text
+          svg1.append('text')
+              .attr("class", "legend_text")
+              .attr("x", legend_x - 30)
+              .attr("y", circle_base - (3*12.5) -30)
+              .text("Total Flights")
+
+          // Draw stacked circles
+          svg1.append('g')
+              .attr("class", "legend")
+              .selectAll('g')
+              .data([100000, 600000, 1500000])
+              .enter()
+              .append('circle')
+              .attr("cx", legend_x)
+              .attr("cy", function(d,i) { return circle_base - i*12.5 })
+              .attr("r", function(d) { return radiusScale(d); })
+              .attr("fill", "none")
+              .attr("stroke", 'black')
+              .attr("stroke-width", 0.9)
+              .sort(order)
+
+          // Add value to circles
+          svg1.append('g')
+              .attr("class", "legend_digits")
+              .selectAll("legend_digits")
+              .data(["100K", "600K", "1500K"])
+              .enter()
+              .append("text")
+              .attr("x", legend_x +50)
+              .attr("y", function(d,i) { return circle_base - (2*i*12.5)})
+              .text(function(d) { return d })
+              .attr("font-family", "Arial Black")
+              .attr("fill", "black")
+              .attr("font-size", "8px");
+
+          // Add lines to guide circle to value
+          svg1.append('g')
+              .attr("class", "legend_line")
+              .selectAll("legend_line")
+              .data([100000, 600000, 1500000])
+              .enter()
+              .append("line")
+              .style("stroke-width", 0.5)
+              .style("stroke", "black")
+              .attr("x1", legend_x)
+              .attr("y1", function(d,i) { return circle_base - (2*i*12.5) -10})
+              .attr("x2", legend_x + 60)
+              .attr("y2", function(d,i) { return circle_base - (2*i*12.5) - 10})   
+
+
+
+          function update1(year) {
+                // Filter grouped data by year (for animation)
+                var filtered = NestedData.filter(function(d) {
+                    return new Date(d['key']).getFullYear() === year;
+                });
+
+                // Overlay year label
+                label.text(Math.round(year));
+
+                // Remove circles from previous plot
+                svg1.selectAll('circle').remove(); 
+                svg1.select('#circletext').remove();
+
+                // Add legend
+                var legend = svg1.append('g')
+                    .attr("class", "legend")
+                    .selectAll('g')
+                    .data([100000, 600000, 1500000])
+                    .enter()
+                    .append('circle')
+                    .attr("cx", legend_x)
+                    .attr("cy", function(d,i) { return circle_base - i*12.5 })
+                    .attr("r", function(d) { return radiusScale(d); })
+                    .attr("fill", "none")
+                    .attr("stroke", 'black')
+                    .attr("stroke-width", 0.9)
+                    .sort(order)
+
+                // Append circles        
+                var circles = svg1.selectAll('circle1')
+                    .data(filtered[0].values)
+
+                circles.enter()
+                    .append('circle')
+                    .attr("class", "bubbles")
+              
+                circles
+                    .attr("cx",  function(d) { return xScale(d.delay_arr_pct)} )
+                    .attr("cy", function(d) { return yScale(d.ontime_arr_pct)} )
+                    .attr("r", function(d) { return radiusScale(d.total_flights)} )
+                    .attr('fill', function(d) { return carrier_colors2[(carrier_colors2.map(function(v) { 
+                                                    return v.key})).indexOf(d.carrier_shortnames)].value.fill })
+                    .attr("id", function(d) { return (d.carrier_names).replace(/\s/g, '') })
+                    .sort(order)
+                    .on("mouseover", function(d) {
+                        tooltip1.transition()
+                            .duration(500)
+                            .style("opacity", .9);
+                        tooltip1.html(d["carrier_names"]  + "</br> (" + formatDec(d["delay_arr_pct"]) + "%" + ", " + formatDec(d["ontime_arr_pct"]) + "%" + ")"+ "</br>" + "Annual Flights: " + d["total_flights"] )
+                            .style("left", (d3.event.pageX) + "px")
+                            .style("top", (d3.event.pageY -60 ) + "px")
+                    })
+                    .on("mouseout", function(d) {
+                        tooltip1.transition()
+                            .duration(500)
+                            .style("opacity", 0)
+                    });
+
+                // Add carrier unique code onto each carrier circle
+                var addText = svg1.append('g')
+                    .attr("id","circletext")
+                    .selectAll('circletext')
+                    .data(filtered[0].values)
+                    .enter()
+                    .append("text")
+
+                circleText = addText
+                    .attr("x", function(d) { return xScale(d.delay_arr_pct) })
+                    .attr("y", function(d) { return yScale(d.ontime_arr_pct) })
+                    .attr("id", function(d) { return d.CARRIER})
+                    .text(function(d) {return d.CARRIER})
+                    .style("text-anchor", "middle")
+                    .attr("font-family", "Arial Black")
+                    .attr("fill", "grey")
+                    .attr("font-size", "8px")
+                
+          }; // end of function update(year)
+
+
+          // Get years variable 2007-2016
+          var years = [];
+
+          for (var year = 2007; year <= 2016; year += 1) {
+              years.push(year);
+          };
+        
+          var carrier_list = ["All", "AirTran", "Alaska", "Aloha", "American", 
+              "American Eagle", "Atlantic Southeast", "Comair", "Continental", "Delta", 
+              "Expressjet", "Frontier", "Hawaiian", "JetBlue", "Mesa", "Northwest", 
+              "Pinnacle", "Skywest", "Southwest", "Spirit", "United", "US", 
+              "Virgin America"]; // 23 airlines, 0-22
+
+          // Initial year index
+          var year_idx = 0;
+
+          // Set chart to update for each year
+          var year_interval = setInterval(function() {
+              update1(years[year_idx]);
+
+              year_idx++;
+
+              if (year_idx >= years.length) {
+                  clearInterval(year_interval);     
+
+                  // Add select year text and a set of year buttons after animation ends         
+                  var select_year = d3.select('#chart')
+                      .append("text")
+                      .attr("class", "select_year")
+                      .style("font-family", "sans-serif")
+                      .style("font-size", "14px")
+                      .style("font-weight", "bold")
+                      .style("color", "Black")
+                      .text(" Year"); 
+
+                  var buttons = d3.select("#chart")
+                      .append("div")
+                      .attr("class", "years_buttons")
+                      .selectAll("div")
+                      .data(years)
+                      .enter()
+                      .append("div")
+                      .attr("value", function(d) { return d; })
+                      .attr("id", function(d) { return d; })
+                      .text(function(d) { return d; });
+
+                  // Add buttons for all airlines
+                  var carrier_buttons = d3.select("#vis")
+                      .append("div")
+                      .attr("class", "airlines_buttons")
+                      .selectAll("div")
+                      .data(carrier_list)
+                      .enter()
+                      .append("div")
+                      .attr("value", function(d) { return d} )
+                      .attr("id", function(d) { return d})
+                      .text(function(d) { return d})
+                      .style("background-color", function(d) { return carrier_colors2[(carrier_colors2.map(function(v) { 
+                                                                  return v.key})).indexOf(d)].value.fill })
+                      .style("opacity", 0.9)
+
+                  var Click_buttons = d3.select("#click_buttons_text")
+                      .append("text")
+                      .attr("class", "Click_buttons")
+                      .style("font-family", "sans-serif")
+                      .style("font-size", "14px")
+                      .style("font-weight", "bold")
+                      .style("color", "Black")
+                      .text(" Click buttons to toggle carrier visibility"); 
+
+
+                  // Event listener for year buttons
+                  for (var year=2007; year<=2016; year++) {
+                      (function(year) {
+                          document.getElementById(String(year)).addEventListener("click", function() {
+                              d3.select(".years_buttons")
+                                .selectAll("div")
+                                .transition()
+                                .duration(500)
+                                .style('color', 'black')
+                                .style('background', 'rgb(251, 201, 127)')
+
+                              d3.select(this)
+                                .transition()
+                                .duration(500)
+                                .style("background", "lightBlue")
+                                .style("color", "white");
+
+                              update1(year);                               
+                          })
+                      })(year);
+                  } // end of for loop
+
+                  // Toggle to hide or show bubbles
+                  // https://stackoverflow.com/questions/40981761/how-to-toggle-this-element
+                  for (var i = 0; i<=22; i++) {
+                      (function(i) {
+                          var toggle = true;
+                          document.getElementById(carrier_list[i]).addEventListener("click", function() {
+                              // Hide all bubbles and circle texts when All is clicked
+                              if (carrier_list[i] == "All") {
+                                  for  (var j = 1; j <=22; j++) {
+                                      d3.select("#" + String(carrier_colors2[j].value.circle_id)).style("visibility", toggle ? "hidden" : "visible");   
+                                  }
+                                  d3.select('#circletext').style("visibility", toggle ? "hidden" : "visible");
+
+                              } else {
+                                  // Hide or show circle and circletext
+                                  d3.select("#" + String(carrier_colors2[(carrier_colors2.map(function(v) {
+                                                                    return v.key})).indexOf(carrier_list[i])].value.circle_id))
+                                    .style("visibility", toggle ? "hidden" : "visible");
+
+                                  // Because Pinnacle carrier code 9E starts with a number  
+                                  if (carrier_list[i] == "Pinnacle") {
+                                      d3.select('[id="9E"]')
+                                        .style("visibility", toggle ? "hidden" : "visible");
+                                  } else {
+                                  d3.select("#" + String(carrier_colors2[(carrier_colors2.map(function(v) {
+                                                                    return v.key})).indexOf(carrier_list[i])].value.circletext_id))
+                                    .style("visibility", toggle ? "hidden" : "visible");
+                                  }
+                              }
+
+                              // Update toggle
+                              toggle = !toggle;
+                          })
+                      })(i); // end of function(i)
+                  } // end of for (var i
+
+              } // end of if loop
+          }, 1000); // end of year_interval
+          
+      }; //end of drawBubbles function    
+ 
+      </script>
+  </head>
+
+<body>
+  <h1> US Carriers Improve Arrival Performance Year-on-Year with a Dip in 2013 and 2014 </h1>
+  <div id="chart" style="width:800px; margin:0 auto;"></div>
+  <div id="click_buttons_text" style="width:800px; margin:0 auto;" ></div>
+  <div id="vis" style="width:800px; margin:0 auto;"></div>
+
+  <script src="https://d3js.org/d3.v3.min.js"></script>  
+  <script type="text/javascript">
+
+    /* Load data */
+    // Parse YEAR
+    var parseDate = d3.time.format("%Y").parse;
+
+    d3.csv("BubblePlotData_Yne.csv", function(d) {
+        return {
+            YEAR : parseDate(d['YEAR']).getFullYear(),
+            CARRIER : d['CARRIER'],
+            carrier_names: d['carrier_names'],
+            carrier_shortnames: d['carrier_shortnames'],
+            ontime_arr_pct : +d['ontime_arr_pct'],
+            delay_arr_pct : +d['delay_arr_pct'],
+            total_flights : +d['total_flights']
+        };
+    }, drawBubbles);
+
+  </script>
+</body>
+</html>
