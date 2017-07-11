@@ -1,6 +1,6 @@
 # udacity-p6-DataVisualisation
 
-https://bl.ocks.org/doctavia/raw/31e61985fc675bcf335734f793611a17/
+http://bl.ocks.org/doctavia/raw/9632e694559309792952251098e5bbdd/
 
 ## Summary
 This data visualization shows the performance of US airlines between 2007 and 2016. Over the past ten years, there has been steady decrease in flight delays with some setbacks in 2013 and 2014. Hawaiian Airlines leads as the most punctual carrier, followed by Alaska Airlines and Delta Airlines that have surpassed the performance of other carriers over the years.
